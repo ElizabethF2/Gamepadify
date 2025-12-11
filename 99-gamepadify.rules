@@ -1,0 +1,17 @@
+# Start Gamepadify when any input device first connects
+ACTION=="add", SUBSYSTEM=="input", TAG+="systemd", ENV{SYSTEMD_WANTS}="Gamepadify.service"
+
+# Start Gamepadify only for Playstation controllers
+# ACTION=="add", DRIVERS=="playstation", TAG+="systemd", ENV{SYSTEMD_WANTS}="Gamepadify.service"
+
+# Start Gamepadify only for Xbox controllers
+# ACTION=="add", DRIVERS=="xpad", TAG+="systemd", ENV{SYSTEMD_WANTS}="Gamepadify.service"
+
+# Start Gamepadify only for all controllers
+# ACTION=="add", KERNEL=="js*", TAG+="systemd", ENV{SYSTEMD_WANTS}="Gamepadify.service"
+
+# Start Gamepadify only for controllers with a specific name
+# ACTION=="add", ATTRS{name}=="Wireless Controller", TAG+="systemd", ENV{SYSTEMD_WANTS}="Gamepadify.service"
+
+# Start Gamepadify only for controllers with a specific name (non-systemd)
+# ACTION=="add", ATTRS{name}=="Wireless Controller", RUN+="/path/to/your/service-manager command-to-start-a-service Gamepadify"

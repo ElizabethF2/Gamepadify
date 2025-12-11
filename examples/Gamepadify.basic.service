@@ -1,0 +1,12 @@
+# Pure python - always running the full daemon
+[Unit]
+Description=Gamepadify Controller Script
+
+[Service]
+Type=simple
+ExecStart=/root/.local/bin/mygamepad
+KillSignal=SIGINT
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

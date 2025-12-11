@@ -1,0 +1,9 @@
+# Using a udev rule to only start the service whenever a Controller connects
+[Unit]
+Description=Gamepadify Controller Script
+
+[Service]
+Type=simple
+ExecStart=/root/.local/bin/mygamepad
+KillSignal=SIGINT
+Restart=on-failure
