@@ -5,6 +5,8 @@ IN_CREATE = 0x00000100
 INPUT_PATH = '/dev/input'
 UINPUT_PATH = '/dev/uinput'
 INOTIFY_BUF_SIZE = 32
+INPUT_EVENT_SIZE = 24
+INPUT_EVENT_BUF_COUNT = 25
 MAX_MOUSE_ACCELERATION = 999999
 
 UINPUT_PREFIX = b'\x03\x00\x11\x22\x33\x44\x00\x00'
@@ -164,6 +166,8 @@ LEFT_MOUSE = 0x110
 RIGHT_MOUSE = 0x111
 MIDDLE_MOUSE = 0x112
 
+KEY_MAX = 767
+
 # TODO constants for other gamepads
 
 EV_SYN = 0
@@ -173,6 +177,8 @@ EV_ABS = 3
 EV_MSC = 4
 EV_LED = 0x11
 EV_FF  = 0x15
+
+EVENT_KINDS = (EV_SYN, EV_KEY, EV_REL, EV_ABS, EV_MSC, EV_LED, EV_FF)
 
 REL_X = 0
 REL_Y = 1
@@ -194,6 +200,40 @@ DEVICE_IDLE = 'DEVICE_IDLE'
 TICK = 'TICK'
 
 SYN_REPORT = 0
+SYN_DROPPED = 3
+
+_IOC_NRBITS = 8
+_IOC_TYPEBITS = 8
+_IOC_NRSHIFT = 0
+_IOC_SIZEBITS = 14
+
+_IOC_TYPESHIFT = _IOC_NRSHIFT + _IOC_NRBITS
+_IOC_SIZESHIFT = _IOC_TYPESHIFT + _IOC_TYPEBITS
+_IOC_DIRSHIFT = _IOC_SIZESHIFT + _IOC_SIZEBITS
+
+_IOC_READ = 2
+_IOC_WRITE = 1
+
+def _IOC(dir, type, nr, size):
+  return (((dir)  << _IOC_DIRSHIFT) |
+         (ord(type) << _IOC_TYPESHIFT) |
+         ((nr)   << _IOC_NRSHIFT) |
+         ((size) << _IOC_SIZESHIFT))
+
+def EVIOCGKEY(len):
+  return _IOC(_IOC_READ, 'E', 0x18, len)
+
+def EVIOCGBIT(ev, len):
+  return _IOC(_IOC_READ, 'E', 0x20 + (ev), len)
+
+SIZE_ABSINFO = 24
+
+def EVIOCGABS(abs):
+  return _IOC(_IOC_READ, 'E', 0x40 + (abs), SIZE_ABSINFO)
+
+SIZE_INPUT_MASK = 16
+EVIOCGMASK = _IOC(_IOC_READ, 'E', 0x92, SIZE_INPUT_MASK)
+EVIOCSMASK = _IOC(_IOC_WRITE, 'E', 0x93, SIZE_INPUT_MASK)
 
 EVIOCGNAME = 0x80004506
 EVIOCGUNIQ = 0x80004508
@@ -592,6 +632,7 @@ def _event_handler_thread(queue, callback):
 def wait_for_input_events(path,
                           callback,
                           sync_axis = True,
+                          callback_in_same_thread = True,
                           names_of_interest = DEFAULT_NAMES_OF_INTEREST,
                           timeout = None):
   try:
@@ -614,21 +655,24 @@ def wait_for_input_events(path,
       with _lock:
         intd = {'connected': True}
         _internal_state[dname, uid] = intd
-      import queue
-      q = queue.Queue()
-      q.put(ControllerEvent(device, None, CONNECTED, None, None))
-      callback_thread = threading.Thread(
-        target = _event_handler_thread,
-        args = (q, callback),
-        daemon = True
-      )
-      callback_thread.start()
+      if not callback_in_same_thread:
+        import queue
+        q = queue.Queue()
+        callback_thread = threading.Thread(
+          target = _event_handler_thread,
+          args = (q, callback),
+          daemon = True
+        )
+        callback_thread.start()
+        callback = q.put
+      callback(ControllerEvent(device, None, CONNECTED, None, None))
+      buf_size = INPUT_EVENT_SIZE * INPUT_EVENT_BUF_COUNT
       while intd['connected']:
         if timeout is not None and len(ep.poll(timeout = timeout)) < 1:
-          q.put(ControllerEvent(device, None, DEVICE_IDLE, None, None))
+          callback(ControllerEvent(device, None, DEVICE_IDLE, None, None))
         else:
           try:
-            buf = fh.read(24)
+            buf = fh.read(buf_size)
           except OSError as err:
             if err.errno == __import__('errno').ENODEV:
               intd['connected'] = False
@@ -637,49 +681,83 @@ def wait_for_input_events(path,
               raise err
           if not buf:
             break
-          ts = int.from_bytes(buf[0:8],
-                              byteorder = sys.byteorder,
-                              signed = False)
-          m = int.from_bytes(buf[8:16],
-                             byteorder = sys.byteorder,
-                             signed = False)
-          ts += (0.000001 * m)
-          _type = int.from_bytes(buf[16:18],
-                                 byteorder = sys.byteorder,
-                                 signed = False)
-          code = int.from_bytes(buf[18:20],
+          for offset in range(0, len(buf), INPUT_EVENT_SIZE):
+            ts = int.from_bytes(buf[offset+0:offset+8],
                                 byteorder = sys.byteorder,
                                 signed = False)
-          value = int.from_bytes(buf[20:],
-                                 byteorder = sys.byteorder,
-                                 signed = _type == EV_ABS)
-          if _type == EV_KEY:
-            if value:
-              device.held_buttons.add(code)
+            m = int.from_bytes(buf[offset+8:offset+16],
+                              byteorder = sys.byteorder,
+                              signed = False)
+            ts += (0.000001 * m)
+            _type = int.from_bytes(buf[offset+16:offset+18],
+                                  byteorder = sys.byteorder,
+                                  signed = False)
+            code = int.from_bytes(buf[offset+18:offset+20],
+                                  byteorder = sys.byteorder,
+                                  signed = False)
+            value = int.from_bytes(buf[offset+20:offset+24],
+                                  byteorder = sys.byteorder,
+                                  signed = _type == EV_ABS)
+            if _type == EV_KEY:
+              if value:
+                device.held_buttons.add(code)
+              else:
+                try:
+                  device.held_buttons.remove(code)
+                except KeyError:
+                  pass
+              callback(ControllerEvent(device, ts, _type, code, value))
+            elif _type in (EV_ABS, EV_REL):
+              device.axis[code] = value
+              event = ControllerEvent(device, ts, _type, code, value)
+              if sync_axis:
+                enqued_events.append(event)
+              else:
+                callback(event)
+            elif _type == EV_SYN and code == SYN_REPORT and sync_axis:
+              if enqued_events:
+                for event in enqued_events:
+                  callback(event)
+                enqued_events = []
+              else:
+                callback(ControllerEvent(device, None, TICK, None, None))
+            elif _type == EV_SYN and code == SYN_DROPPED:
+              import fcntl
+              buflen = (KEY_MAX//8) + 1
+              buf = bytearray(buflen)
+              fcntl.ioctl(fh, EVIOCGKEY(buflen), buf)
+              for i, b in enumerate(buf):
+                i *= 8
+                for j in range(8):
+                  key = i + j
+                  pressed = (1 << j) & b
+                  if pressed and key not in device.held_buttons:
+                    device.held_buttons.add(key)
+                    callback(ControllerEvent(device, None, EV_KEY, key, 1))
+                  elif not pressed and key in device.held_buttons:
+                    device.held_buttons.remove(key)
+                    callback(ControllerEvent(device, None, EV_KEY, key, 0))
+              for axis, old_value in device.axis.items():
+                fcntl.ioctl(fh, EVIOCGABS(axis), buf)
+                value = int.from_bytes(buf[:4],
+                                       byteorder = sys.byteorder,
+                                       signed = True)
+                if value != old_value:
+                  device.axis[axis] = value
+                  event = ControllerEvent(device, None, _type, code, value)
+                  if sync_axis:
+                    enqued_events.append(event)
+                  else:
+                    callback(event)
+              if sync_axis:
+                for event in enqued_events:
+                  callback(event)
+                enqued_events = []
             else:
-              try:
-                device.held_buttons.remove(code)
-              except KeyError:
-                pass
-            q.put(ControllerEvent(device, ts, _type, code, value))
-          elif _type in (EV_ABS, EV_REL):
-            device.axis[code] = value
-            event = ControllerEvent(device, ts, _type, code, value)
-            if sync_axis:
-              enqued_events.append(event)
-            else:
-              q.put(event)
-          elif _type == EV_SYN and code == SYN_REPORT and sync_axis:
-            if enqued_events:
-              for event in enqued_events:
-                q.put(event)
-              enqued_events = []
-            else:
-              q.put(ControllerEvent(device, ts, TICK, None, None))
-          else:
-            q.put(ControllerEvent(device, ts, TICK, None, None))
-      q.put(ControllerEvent(device, None, DISCONNECTED, None, None))
-      callback_thread.join()
+              callback(ControllerEvent(device, None, TICK, None, None))
+      callback(ControllerEvent(device, None, DISCONNECTED, None, None))
+      if not callback_in_same_thread:
+        callback_thread.join()
     finally:
       _cleanup_device(device = device)
       if timeout is not None:
@@ -994,6 +1072,66 @@ def release_exclusive_access(device):
   except OSError:
     return False
 
+def _make_mask_codes():
+  import ctypes
+  codes_size = (KEY_MAX//8) + 1
+  codes = ctypes.create_string_buffer(codes_size)
+  sfx = (
+    codes_size.to_bytes(4,
+                        byteorder = sys.byteorder,
+                        signed = False) +
+    ctypes.addressof(codes).to_bytes(8,
+                                     byteorder = sys.byteorder,
+                                     signed = False)
+  )
+  return codes_size, codes, sfx
+
+def get_event_mask(device):
+  mask = {}
+  codes_size, codes, sfx = _make_mask_codes()
+  for kind in EVENT_KINDS:
+    buf = bytearray(
+      kind.to_bytes(4, byteorder = sys.byteorder, signed = False) + sfx
+    )
+    if __import__('fcntl').ioctl(device.fh, EVIOCGMASK, buf):
+      continue
+    m = set()
+    for i, b in enumerate(codes.raw):
+      i *= 8
+      for j in range(8):
+        code = i + j
+        masked = (1 << j) & b
+        if masked:
+          m.add(code)
+    if m:
+      mask[kind] = m
+  return mask
+
+def set_event_mask(device, mask):
+  codes_size, codes, sfx = _make_mask_codes()
+  succeeded = True
+  for kind, masked_codes in mask.items():
+    for i in range(codes_size):
+      codes[i] = 0
+    for code in masked_codes:
+      i = code // 8
+      j = code % 8
+      codes[i] = ord(codes[i]) | (1 << j)
+    buf = bytearray(
+      kind.to_bytes(4, byteorder = sys.byteorder, signed = False) + sfx
+    )
+    if __import__('fcntl').ioctl(device.fh, EVIOCSMASK, buf):
+      succeeded = False
+  return succeeded
+
+def mask_from_mappings(mappings):
+  mask = {}
+  for k in mappings.keys():
+    if not (masked_codes := mask.get(kind := k[1])):
+      mask[kind] = (masked_codes := set())
+    masked_codes.add(k[2])
+  return mask
+
 def evdev_to_hidraw_input(device,
                           hidraw_dir = '/sys/class/hidraw'):
   intd = _internal_state[device.name, device.uid]
@@ -1162,7 +1300,7 @@ def rumble(device,
       try:
         __import__('fcntl').ioctl(device_read_fh, EVIOCRMFF, effect_id)
       except OSError:
-        return None
+        ret = None
   return ret
 
 def get_uid(user):

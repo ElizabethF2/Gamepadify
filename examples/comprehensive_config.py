@@ -161,6 +161,11 @@ mymappings.update({
   },
 })
 
+mymask = mask_from_mappings(mymappings)
+mymask[BUTTON] |= {
+  SQUARE, SHARE, L1, L2, R2, PS_HOME, GUIDE_BUTTON,
+}
+
 def flash_color(device, color, rumble_durations):
   import time
   for _ in range(3):
@@ -218,7 +223,10 @@ def handle_pin_entry_mode(event, device, dl):
     dl.pop('unlock_pin_buffer')
     set_rgb(device, DARK_GREEN)
     return True
-  
+
+  if event.name == R3:
+    remap(mymappings, event)
+
   # Block other input if we're in pin entry mode
   return True
 
@@ -232,10 +240,10 @@ def mycallback(event):
     return disconnect_controller(device.uid)
 
   if ((not is_xbox and 
-       button_held(event, L1) and 
+       button_held(event, L1) and
        SHARE in device.held_buttons) or
       (is_xbox and 
-       button_held(event, LB_BUTTON) and 
+       button_held(event, LB_BUTTON) and
        SELECT_BUTTON in device.held_buttons)):
     enabled = not enabled
     dl['enabled'] = enabled
@@ -258,13 +266,13 @@ def mycallback(event):
 
   if remap(mymappings, event):
     return
-  
+
   if button_released(event, PS_HOME) or button_released(event, GUIDE_BUTTON):
     return disconnect_controller(device.uid)
 
   if button_released(event, X_BUTTON) or \
      (not is_xbox and button_released(event, SQUARE)):
-    
+
     # HACK HACK HACK
     # import sys
     # if hasattr(sys, 'pypy_version_info'):
@@ -286,6 +294,7 @@ def mycallback(event):
     grab_exclusive_access(device)
     import gamepadify.wakelock
     dl['wakelock'] = gamepadify.wakelock.try_get_wakelock()
+    set_event_mask(device, mymask)
     return set_rgb(device, DARK_GREEN)
 
   if event.kind == DISCONNECTED and count_devices() <= 1:
