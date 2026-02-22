@@ -1382,6 +1382,7 @@ def start_gui_app(cmd,
                   stdout = None,
                   stderr = None,
                   runtime_dir_roots = ('/run/user',),
+                  xdg_runtime_dir = None,
                   display = None,
                   desktop = None,
                   qt_platform = 'xcb',
@@ -1418,6 +1419,14 @@ def start_gui_app(cmd,
       env['DISPLAY'] = last_display[0]
     except IndexError:
       pass
+  for root in runtime_dir_roots:
+    try:
+      if not xdg_runtime_dir and (ls := os.listdir(root)):
+        xdg_runtime_dir = os.path.join(root, ls[0])
+    except FileNotFoundError:
+      pass
+  if xdg_runtime_dir:
+    env['XDG_RUNTIME_DIR'] = xdg_runtime_dir
   if qt_platform:
     env['QT_QPA_PLATFORM'] = qt_platform
   if type(cmd) is str:

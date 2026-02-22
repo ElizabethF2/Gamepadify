@@ -126,8 +126,9 @@ def show(style_sheet = STYLE_SHEET,
          layout = LAYOUT,
          save_window_geometry = True,
          window_geometry_path = None):
-  app = qtpy.QtWidgets.QApplication(['Gamepadify-OSK'])
+  app = qtpy.QtWidgets.QApplication([APP_ID])
   window = qtpy.QtWidgets.QWidget()
+  window.setWindowTitle('Gamepadify-OSK')
   app.setDesktopFileName(APP_ID)
   if style_sheet:
     window.setStyleSheet(style_sheet)
@@ -156,7 +157,7 @@ def show(style_sheet = STYLE_SHEET,
       window.restoreGeometry(members['window_geometry'])
   except FileNotFoundError:
     pass
-  
+
   window.moveEvent = lambda *u,m=members: window_geometry_changed(u,m)
   window.resizeEvent = lambda *u,m=members: window_geometry_changed(u,m)
 
