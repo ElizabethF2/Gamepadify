@@ -9,5 +9,5 @@ Type=Application
 Categories=Utility;
 Keywords=keyboard;osk;on-screen keyboard;gamepadify;
 
-Exec=sudo /usr/bin/python3 -Im gamepadify.osk
+Exec=sudo /usr/bin/python3 -Im gamepadify.osk --force-wayland
 StartupNotify=false

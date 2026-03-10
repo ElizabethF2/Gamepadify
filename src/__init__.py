@@ -18,6 +18,8 @@ UINPUT_CACHE_PREFIX = '_cached_uinput_fd_'
 
 DEFAULT_NAMES_OF_INTEREST = '.*Controller.*|.*Gamepad.*'
 
+DEFAULT_RUNTIME_DIR_ROOTS = ('/run/user',)
+
 CROSS = 304
 CIRCLE = 305
 TRIANGLE = 307
@@ -1351,38 +1353,95 @@ def find_x11_displays(uid = None, user = None):
     pass
   return [i[1:] for i in sorted(displays, key = lambda i: i[0])]
 
-def find_xauthorities(uid = None, user = None, runtime_dir_roots = ('/run/user',)):
-  if uid is None and user is not None:
-    uid = get_uid(user)
+def find_uid(uid = None, user = None):
+  if uid is None:
+    if user is None:
+      user = os.environ.get('SUDO_USER')
+    if user is None:
+      user = os.environ.get('DOAS_USER')
+    if user is not None:
+      uid = get_uid(user)
+  return uid
+
+def find_runtime_dirs(uid = None,
+                      user = None,
+                      runtime_dir_roots = DEFAULT_RUNTIME_DIR_ROOTS):
+  uid = find_uid(uid = uid, user = user)
+  if rt := os.environ.get('XDG_RUNTIME_DIR'):
+    try:
+      rt = {'path': rt, 'stat': os.stat(rt)}
+      if uid is None or rt['stat'].st_uid == uid:
+        yield rt
+        return
+    except OSError:
+      pass
   for root in runtime_dir_roots:
     try:
-      f = os.listdir(root)
+      with os.scandir(root) as it:
+        for entry in it:
+          if not entry.is_dir():
+            continue
+          if uid is None:
+            yield {'path': entry.path, 'stat': entry.stat()}
+          elif entry.name == str(uid) and entry.stat().st_uid == uid:
+            yield {'path': entry.path, 'stat': entry.stat()}
     except FileNotFoundError:
-      f = []
-    if uid is not None:
-      try:
-        f = f.remove(str(uid))
-      except ValueError:
-        pass
-      f = [str(uid), *f]
-    for u in f:
-      try:
-        with os.scandir(os.path.join(root, u)) as it:
-          for entry in it:
-            if not entry.name.startswith('xauth'):
+      pass
+
+def find_xauthorities(uid = None,
+                      user = None,
+                      runtime_dirs = None,
+                      runtime_dir_roots = DEFAULT_RUNTIME_DIR_ROOTS):
+  uid = find_uid(uid = uid, user = user)
+  if xa := os.environ.get('XAUTHORITY'):
+    try:
+      xa = {'path': xa, 'stat': os.stat(xa)}
+      if uid is None or xa['stat'].st_uid == uid:
+        yield xa
+        return
+    except OSError:
+      pass
+  if runtime_dirs is None:
+    runtime_dirs = find_runtime_dirs(
+      uid = uid,
+      user = user,
+      runtime_dir_roots = runtime_dir_roots,
+    )
+  for rt in runtime_dirs:
+    try:
+      with os.scandir(rt['path']) as it:
+        for entry in it:
+          if not entry.name.startswith('xauth'):
+            continue
+          if uid is not None and entry.stat().st_uid != uid:
               continue
-            if uid is not None and entry.stat().st_uid != uid:
-              continue
-            yield entry
-      except FileNotFoundError:
-        pass
+          yield {'path': entry.path, 'stat': entry.stat()}
+    except FileNotFoundError:
+      pass
+
+def find_xauthority_and_runtime_dir(uid = None,
+                                    user = None,
+                                    runtime_dir_roots = DEFAULT_RUNTIME_DIR_ROOTS):
+  uid = find_uid(uid = uid, user = user)
+  runtime_dirs = find_runtime_dirs(
+    uid = uid,
+    runtime_dir_roots = runtime_dir_roots,
+  )
+  best = (None, None)
+  for rt in runtime_dirs:
+    for xa in find_xauthorities(uid = uid, runtime_dirs = (rt,)):
+      if not best[0] or xa['stat'].st_mtime > best[0]['stat'].st_mtime:
+        best = (xa, rt)
+    if not best[0] and \
+       (not best[1] or rt['stat'].st_mtime > best[1]['stat'].st_mtime):
+      best = (None, rt)
+  return best
 
 def start_gui_app(cmd,
                   env = None,
                   stdout = None,
                   stderr = None,
-                  runtime_dir_roots = ('/run/user',),
-                  xdg_runtime_dir = None,
+                  runtime_dir_roots = DEFAULT_RUNTIME_DIR_ROOTS,
                   display = None,
                   desktop = None,
                   qt_platform = 'wayland',
@@ -1390,26 +1449,17 @@ def start_gui_app(cmd,
   env = dict(os.environ if env is None else env)
   unset = object()
   uid = unset
-  if xauth := env.get('XAUTHORITY'):
-    try:
-      uid = os.stat(xauth).st_uid
-      if user is not None:
-        uuser = get_user(uid)
-        if user != uuser:
-          uid = unset
-          xauth = None
-    except FileNotFoundError:
-      xauth = None
-  if not xauth:
-    try:
-      last_xauth = list(find_xauthorities(
-        user = user,
-        runtime_dir_roots = runtime_dir_roots
-      ))[-1]
-      env['XAUTHORITY'] = last_xauth.path
-      uid = last_xauth.stat().st_uid
-    except IndexError:
-      pass
+  xauth, rt_dir = find_xauthority_and_runtime_dir(user = user)
+  if rt_dir:
+    env['XDG_RUNTIME_DIR'] = rt_dir['path']
+    uid = rt_dir['stat'].st_uid
+  else:
+    env.pop('XDG_RUNTIME_DIR', 0)
+  if xauth:
+    env['XAUTHORITY'] = xauth['path']
+    uid = xauth['stat'].st_uid
+  else:
+    env.pop('XAUTHORITY', 0)
   if display:
     env['DISPLAY'] = display
   else:
@@ -1419,14 +1469,6 @@ def start_gui_app(cmd,
       env['DISPLAY'] = last_display[0]
     except IndexError:
       pass
-  for root in runtime_dir_roots:
-    try:
-      if not xdg_runtime_dir and (ls := os.listdir(root)):
-        xdg_runtime_dir = os.path.join(root, ls[0])
-    except FileNotFoundError:
-      pass
-  if xdg_runtime_dir:
-    env['XDG_RUNTIME_DIR'] = xdg_runtime_dir
   if qt_platform:
     env['QT_QPA_PLATFORM'] = qt_platform
   if type(cmd) is str:

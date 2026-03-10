@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys, os, time
+import sys, os, threading
 import qtpy.QtWidgets, qtpy.QtCore, qtpy.QtGui
 from . import *
 
@@ -22,7 +22,7 @@ MINIMAL_STYLE_SHEET = '''
   }
 
   QPushButton#Space_key {
-    width: 25em;
+    width: 23em;
   }
 '''
 
@@ -197,7 +197,11 @@ def show(style_sheet = STYLE_SHEET,
   app.exec()
 
 def main():
-  setup_virtual_mouse_and_keyboard()
+  threading.Thread(target = setup_virtual_mouse_and_keyboard).start()
+  if '--force-wayland' in sys.argv:
+    os.environ['QT_QPA_PLATFORM'] = 'wayland'
+    if rt_dir := next(find_runtime_dirs()):
+      os.environ['XDG_RUNTIME_DIR'] = rt_dir['path']
   save_window_geometry = '--no-save-window-geometry' not in sys.argv
   show(save_window_geometry = save_window_geometry)
 
