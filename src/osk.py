@@ -200,7 +200,7 @@ def main():
   threading.Thread(target = setup_virtual_mouse_and_keyboard).start()
   if '--force-wayland' in sys.argv:
     os.environ['QT_QPA_PLATFORM'] = 'wayland'
-    if rt_dir := next(find_runtime_dirs()):
+    if rt_dir := next(find_runtime_dirs(), None):
       os.environ['XDG_RUNTIME_DIR'] = rt_dir['path']
   save_window_geometry = '--no-save-window-geometry' not in sys.argv
   show(save_window_geometry = save_window_geometry)
