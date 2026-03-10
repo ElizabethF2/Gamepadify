@@ -15,15 +15,31 @@ LAYOUT = [
   'Ctrl Alt Space RAlt RCtrl',
 ]
 
-# TODO fix hover
+MINIMAL_STYLE_SHEET = '''
+  * {
+    color: #17f50C;
+    background-color: #000;
+  }
 
-STYLE_SHEET = '''
-  color: #17f50C;
-  background-color: #000;
-  
-  QPushButton::hover
-  {
-  background-color : lightgreen;
+  QPushButton#Space_key {
+    width: 25em;
+  }
+'''
+
+STYLE_SHEET = MINIMAL_STYLE_SHEET + '''
+  QPushButton {
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+  }
+
+  QPushButton:hover {
+    border: 1px solid #17f50C;
+  }
+
+  QPushButton:pressed {
+    border: 1px solid #077501;
+    background-color: #042902;
   }
 '''
 
@@ -39,8 +55,8 @@ HOLDABLE_KEYS = {
 
 SHIFTABLE_KEYS = {v: k for k,v in SHIFTED_KEYS.items()}
 
-def get_key_text(members, name, pressed):
-  held_keys = members['held_keys']
+def get_key_text(ctx, name, pressed):
+  held_keys = ctx['held_keys']
   capslock = 'Caps' in held_keys
   shift = 'Shift' in held_keys or 'RShift' in held_keys
   if shift and not capslock:
@@ -61,61 +77,61 @@ def get_key_text(members, name, pressed):
     n = name
   if pressed and len(n) > 1:
     n = n.upper()
-  return ('[ ' + n + ' ]') if pressed else n
+  return ('[ ' + n + ' ]') if pressed and ctx['brackets_on_press'] else n
 
-def key_down(members, name):
+def key_down(ctx, name):
   key = KEYMAP.get(name)
   if key and name not in HOLDABLE_KEYS:
     press_key(key)
-    members['keys'][name].setText(get_key_text(members, name, True))
+    ctx['keys'][name].setText(get_key_text(ctx, name, True))
 
-def release_hkey(members, name):
+def release_hkey(ctx, name):
   hkey = HOLDABLE_KEYS.get(name)
-  members['keys'][name].setText(name)
-  members['held_keys'].remove(name)
+  ctx['keys'][name].setText(name)
+  ctx['held_keys'].remove(name)
   if name == 'Caps':
     press_key(hkey)
   release_key(hkey)
   if name in ('Shift', 'RShift', 'Caps'):
-    for k, btn in members['keys'].items():
+    for k, btn in ctx['keys'].items():
       if k not in HOLDABLE_KEYS:
-        btn.setText(get_key_text(members, k, False))
+        btn.setText(get_key_text(ctx, k, False))
 
-def key_up(members, name):
+def key_up(ctx, name):
   if (hkey := HOLDABLE_KEYS.get(name)):
-    held_keys = members['held_keys']
+    held_keys = ctx['held_keys']
     if name in held_keys:
-      release_hkey(members, name)
+      release_hkey(ctx, name)
     else:
-      members['keys'][name].setText(get_key_text(members, name, True))
+      ctx['keys'][name].setText(get_key_text(ctx, name, True))
       held_keys.add(name)
       press_key(hkey)
       if name == 'Caps':
         release_key(hkey)
       if name in ('Shift', 'RShift', 'Caps'):
-        for k, btn in members['keys'].items():
+        for k, btn in ctx['keys'].items():
           if k not in HOLDABLE_KEYS:
-            btn.setText(get_key_text(members, k, False))
+            btn.setText(get_key_text(ctx, k, False))
   elif (key := KEYMAP.get(name)):
     release_key(key)
-    members['keys'][name].setText(get_key_text(members, name, False))
-    for n in list(members['held_keys']):
+    ctx['keys'][name].setText(get_key_text(ctx, name, False))
+    for n in list(ctx['held_keys']):
       if n != 'Caps':
-        release_hkey(members, n)
+        release_hkey(ctx, n)
 
 def get_window_geometry_path():
   xdg_state_dir = os.environ.get('XDG_STATE_DIR', '~/.local/state')
   xdg_state_dir = os.path.expanduser(xdg_state_dir)
   return os.path.join(xdg_state_dir, 'gamepadify_osk')
 
-def window_geometry_changed(unused, members):
-  if not members.get('save_window_geometry'):
+def window_geometry_changed(ctx):
+  if not ctx.get('save_window_geometry'):
     return
-  window = members.get('window')
-  old_geometry = members.get('window_geometry')
+  window = ctx.get('window')
+  old_geometry = ctx.get('window_geometry')
   geometry = bytes(window.saveGeometry())
   if geometry != old_geometry:
-    path = members.get('window_geometry_path')
+    path = ctx.get('window_geometry_path')
     if not path:
       path = get_window_geometry_path()
     os.makedirs(os.path.dirname(path), exist_ok = True)
@@ -125,7 +141,8 @@ def window_geometry_changed(unused, members):
 def show(style_sheet = STYLE_SHEET,
          layout = LAYOUT,
          save_window_geometry = True,
-         window_geometry_path = None):
+         window_geometry_path = None,
+         brackets_on_press = False):
   app = qtpy.QtWidgets.QApplication([APP_ID])
   window = qtpy.QtWidgets.QWidget()
   window.setWindowTitle('Gamepadify-OSK')
@@ -138,41 +155,41 @@ def show(style_sheet = STYLE_SHEET,
   )
   main_layout = qtpy.QtWidgets.QVBoxLayout()
   main_layout = qtpy.QtWidgets.QVBoxLayout()
-  members = {
+  ctx = {
     'window': window,
     'keys': {},
     'held_keys': set(),
     'save_window_geometry': save_window_geometry,
+    'brackets_on_press': brackets_on_press,
   }
   if get_lit_leds('capslock'):
-    members['held_keys'].add('Caps')
+    ctx['held_keys'].add('Caps')
   if window_geometry_path:
-    members['window_geometry_path'] = window_geometry_path
+    ctx['window_geometry_path'] = window_geometry_path
   else:
     window_geometry_path = get_window_geometry_path()
 
   try:
     with open(window_geometry_path, 'rb') as f:
-      members['window_geometry'] = f.read()
-      window.restoreGeometry(members['window_geometry'])
+      ctx['window_geometry'] = f.read()
+      window.restoreGeometry(ctx['window_geometry'])
   except FileNotFoundError:
     pass
 
-  window.moveEvent = lambda *u,m=members: window_geometry_changed(u,m)
-  window.resizeEvent = lambda *u,m=members: window_geometry_changed(u,m)
+  window.moveEvent = lambda *_,c=ctx: window_geometry_changed(c)
+  window.resizeEvent = lambda *_,c=ctx: window_geometry_changed(c)
 
   for row in layout:
     row_layout = qtpy.QtWidgets.QHBoxLayout()
     for key in row.split():
-      p = key in members['held_keys']
-      btn = qtpy.QtWidgets.QPushButton(text = get_key_text(members, key, p))
+      p = key in ctx['held_keys']
+      btn = qtpy.QtWidgets.QPushButton(text = get_key_text(ctx, key, p))
       row_layout.addWidget(btn)
-      btn.pressed.connect(lambda m=members, k=key: key_down(m, k))
-      btn.released.connect(lambda m=members, k=key: key_up(m, k))
+      btn.pressed.connect(lambda c=ctx, k=key: key_down(c, k))
+      btn.released.connect(lambda c=ctx, k=key: key_up(c, k))
       btn.setMinimumSize(10,10)
-      members['keys'][key] = btn
-      if key == 'Space':
-        row_layout.setStretchFactor(btn, 4)      
+      btn.setObjectName(key+'_key')
+      ctx['keys'][key] = btn
     main_layout.addLayout(row_layout)
 
   window.setLayout(main_layout)

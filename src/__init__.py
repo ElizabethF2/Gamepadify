@@ -1385,7 +1385,7 @@ def start_gui_app(cmd,
                   xdg_runtime_dir = None,
                   display = None,
                   desktop = None,
-                  qt_platform = 'xcb',
+                  qt_platform = 'wayland',
                   user = None):
   env = dict(os.environ if env is None else env)
   unset = object()

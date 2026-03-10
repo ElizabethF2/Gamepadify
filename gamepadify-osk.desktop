@@ -1,0 +1,13 @@
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Name=Gamepadify-OSK
+GenericName=Gamepadify OSK
+Comment=Gamepadify's On-Screen Keyboard
+
+Icon=input-keyboard
+Type=Application
+Categories=Utility;
+Keywords=keyboard;osk;on-screen keyboard;gamepadify;
+
+Exec=sudo /usr/bin/python3 -Im gamepadify.osk
+StartupNotify=false
