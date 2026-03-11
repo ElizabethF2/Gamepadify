@@ -4,7 +4,7 @@ import sys, os, threading
 import qtpy.QtWidgets, qtpy.QtCore, qtpy.QtGui
 from . import *
 
-APP_ID = 'Gamepadify.OSK'
+APP_ID = 'Gamepadify-OSK'
 
 LAYOUT = [
   'Esc F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12 PgUp',
@@ -142,7 +142,13 @@ def show(style_sheet = STYLE_SHEET,
          layout = LAYOUT,
          save_window_geometry = True,
          window_geometry_path = None,
-         brackets_on_press = False):
+         brackets_on_press = False,
+         force_wayland = True):
+  threading.Thread(target = setup_virtual_mouse_and_keyboard).start()
+  if force_wayland:
+    os.environ['QT_QPA_PLATFORM'] = 'wayland'
+    if rt_dir := next(find_runtime_dirs(), None):
+      os.environ['XDG_RUNTIME_DIR'] = rt_dir['path']
   app = qtpy.QtWidgets.QApplication([APP_ID])
   window = qtpy.QtWidgets.QWidget()
   window.setWindowTitle('Gamepadify-OSK')
@@ -197,13 +203,10 @@ def show(style_sheet = STYLE_SHEET,
   app.exec()
 
 def main():
-  threading.Thread(target = setup_virtual_mouse_and_keyboard).start()
-  if '--force-wayland' in sys.argv:
-    os.environ['QT_QPA_PLATFORM'] = 'wayland'
-    if rt_dir := next(find_runtime_dirs(), None):
-      os.environ['XDG_RUNTIME_DIR'] = rt_dir['path']
-  save_window_geometry = '--no-save-window-geometry' not in sys.argv
-  show(save_window_geometry = save_window_geometry)
+  show(
+    save_window_geometry = '--no-save-window-geometry' not in sys.argv,
+    force_wayland = '--force-wayland' in sys.argv,
+  )
 
 if __name__ == '__main__':
   main()

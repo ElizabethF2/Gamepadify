@@ -1,7 +1,7 @@
 #!/usr/bin/env xdg-open
 [Desktop Entry]
 Name=Gamepadify-OSK
-GenericName=Gamepadify OSK
+GenericName=On-Screen Keyboard
 Comment=Gamepadify's On-Screen Keyboard
 
 Icon=input-keyboard
