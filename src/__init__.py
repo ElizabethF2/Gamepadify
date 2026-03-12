@@ -582,7 +582,7 @@ def wait_for_controllers(callback, **kwargs):
   kwargs.setdefault('ignore_new', False)
   handle_controllers(callback, **kwargs)
 
-def _get_ioctl(fh, cmd, buflen = 256):
+def get_ioctl(fh, cmd, buflen = 256):
   buf = bytearray(buflen)
   try:
     import fcntl
@@ -642,10 +642,10 @@ def wait_for_input_events(path,
   except FileNotFoundError:
     return
   with fh:
-    dname = _get_ioctl(fh, EVIOCGNAME)
+    dname = get_ioctl(fh, EVIOCGNAME)
     if not __import__('re').match(names_of_interest, dname):
       return
-    uid = _get_ioctl(fh, EVIOCGUNIQ)
+    uid = get_ioctl(fh, EVIOCGUNIQ)
     device = Device(path, dname, uid, fh)
     if sync_axis:
       enqued_events = []
@@ -765,7 +765,7 @@ def wait_for_input_events(path,
       if timeout is not None:
         ep.close()
 
-def _controller_connected_callback(path, callback, **kwargs):
+def controller_connected_callback(path, callback, **kwargs):
   t = threading.Thread(target = wait_for_input_events,
                        args = (path, callback),
                        kwargs = kwargs,
@@ -1530,7 +1530,7 @@ def get_lit_leds(name, root = '/sys/class/leds'):
 
 def automatically_handle_controllers(callback, **kwargs):
   wait_for_controllers(
-    lambda ct, cb=callback, **kw: _controller_connected_callback(ct, cb, **kw),
+    lambda ct, cb=callback, **kw: controller_connected_callback(ct, cb, **kw),
     **kwargs)
 
 __all__ = list(filter(lambda i: i[0] != '_' and i not in _exclude,

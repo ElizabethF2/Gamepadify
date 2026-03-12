@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 
 import os
-import gamepadify
+from . import *
 
 def list_all_devices():
   results = []
-  for fname in os.listdir(gamepadify.INPUT_PATH):
+  for fname in os.listdir(INPUT_PATH):
     if fname[:5] == 'event' and fname[5:].isdigit():
-      path = os.path.join(gamepadify.INPUT_PATH, fname)
+      path = os.path.join(INPUT_PATH, fname)
       with open(path, 'rb') as fh:
-        name = gamepadify._get_ioctl(fh, gamepadify.EVIOCGNAME)
-        uid = gamepadify._get_ioctl(fh, gamepadify.EVIOCGUNIQ)
+        name = get_ioctl(fh, EVIOCGNAME)
+        uid = get_ioctl(fh, EVIOCGUNIQ)
       results.append({'path': path, 'name': name, 'uid': uid})
   return results
 
