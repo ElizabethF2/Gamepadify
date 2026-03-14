@@ -151,7 +151,7 @@ def show(style_sheet = STYLE_SHEET,
       os.environ['XDG_RUNTIME_DIR'] = rt_dir['path']
   app = qtpy.QtWidgets.QApplication([APP_ID])
   window = qtpy.QtWidgets.QWidget()
-  window.setWindowTitle('Gamepadify-OSK')
+  window.setWindowTitle(APP_ID)
   app.setDesktopFileName(APP_ID)
   if style_sheet:
     window.setStyleSheet(style_sheet)
