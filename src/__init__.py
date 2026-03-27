@@ -1060,6 +1060,12 @@ def type_string(s, duration = 0.25, delay = 0.1, device = None):
       raise ValueError('Unable to type key(s) for {}'.format(repr(c)))
     __import__('time').sleep(delay)
 
+def move_mouse(x, y, device = None):
+  if x != 0:
+    emit(MOUSE, MOUSE_X, x, device = device)
+  if y != 0:
+    emit(MOUSE, MOUSE_Y, y, device = device)
+
 def grab_exclusive_access(device):
   try:
     __import__('fcntl').ioctl(device.fh, EVIOCGRAB, 1)
