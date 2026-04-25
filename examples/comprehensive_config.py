@@ -248,10 +248,10 @@ def mycallback(event):
     dl['enabled'] = enabled
     set_rgb(device, DARK_GREEN if enabled else DARK_PURPLE)
     if enabled:
-      grab_exclusive_access(device)
       rumble(device, 0.1)
       __import__('time').sleep(0.2)
       rumble(device, 0.1)
+      grab_exclusive_access(device)
     else:
       release_exclusive_access(device)
       rumble(device, 0.1)
