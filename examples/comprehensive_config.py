@@ -12,9 +12,10 @@ BRIGHT_RED = (200, 0, 0)
 ELIGIBLE_UNLOCK_BUTTONS = {CROSS, CIRCLE, SQUARE, TRIANGLE, X_BUTTON}
 
 PINS = {
-  
+
   # (TRIANGLE, TRIANGLE, SQUARE, SQUARE, TRIANGLE, TRIANGLE): 'Alice',
   (TRIANGLE,): '_toggle_sddm',
+  (SQUARE,): '_kr',
 }
 
 TIMEOUT = 5 * 60 # seconds
@@ -212,6 +213,14 @@ def handle_pin_entry_mode(event, device, dl):
           'systemctl', 'is-active', '--quiet', 'sddm'
         )).returncode == 0 else 'start',
       'sddm'))
+    elif user == '_kr':
+      press_key(LEFT_CTRL)
+      press_key(LEFT_ALT)
+      tap_key(T_KEY)
+      release_key(LEFT_ALT)
+      release_key(LEFT_CTRL)
+      __import__('time').sleep(3)
+      type_string('kr && exit\n')
     elif user:
       import gamepadify.login
       gamepadify.login.try_login_or_unlock(user)
